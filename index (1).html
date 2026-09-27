@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="算账">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>算账助手</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-tap-highlight-color: transparent; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  input, select { font-size: 16px; } /* 防止iOS自动放大 */
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen pb-24">
+<div class="max-w-3xl mx-auto p-3">
+  <header class="bg-blue-700 text-white rounded-xl shadow p-4 mb-4">
+    <h1 class="text-xl font-bold">算账助手</h1>
+    <p class="text-blue-200 text-xs mt-1">注单结算 · 盈亏统计</p>
+  </header>
+
+  <!-- 页签 -->
+  <div class="flex bg-white rounded-xl shadow mb-4 overflow-hidden">
+    <button id="tabCalc" class="flex-1 py-3 font-semibold text-blue-700 border-b-2 border-blue-700">记一笔</button>
+    <button id="tabHistory" class="flex-1 py-3 font-semibold text-gray-500 border-b-2 border-transparent">账单统计</button>
+  </div>
+
+  <!-- 页面1：计算器 -->
+  <div id="pageCalc">
+    <div class="bg-white rounded-xl shadow p-4 mb-4">
+      <label class="block text-sm font-medium text-gray-600 mb-1">申报人</label>
+      <input id="declarer" type="text" value="张三" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-gray-700">注单列表</h2>
+        <button id="addBtn" class="bg-blue-600 active:bg-blue-800 text-white text-sm px-4 py-2 rounded-lg shadow">+ 添加注单</button>
+      </div>
+      <div id="betList" class="space-y-3"></div>
+      <div class="mt-4 pt-3 border-t text-sm text-gray-700 space-y-1">
+        <div class="flex justify-between"><span>总下注金额</span><span id="sumBet" class="num font-semibold">0.00</span></div>
+        <div class="flex justify-between"><span>总返水</span><span id="sumRebate" class="num font-semibold">0.00</span></div>
+      </div>
+    </div>
+
+    <!-- 结算单 -->
+    <div class="bg-white rounded-xl shadow p-4">
+      <h2 class="font-semibold text-gray-700 mb-3 pb-2 border-b">结算单</h2>
+      <div class="text-sm leading-7 text-gray-800">
+        <div>申报人：<span id="rDeclarer" class="font-medium">张三</span></div>
+        <div>订单金额明细：<span id="rDetail" class="num">0=0.00</span></div>
+        <div>订单总额：<span id="rTotal" class="num font-semibold">0.00</span></div>
+        <div>返水：<span id="rRebate" class="num">0.00</span></div>
+        <div id="rWins" class="whitespace-pre-line"></div>
+        <div class="mt-3 pt-3 border-t flex justify-between items-center">
+          <span class="font-semibold">盈亏情况</span>
+          <span id="rPnL" class="num text-2xl font-bold text-red-600">0.00</span>
+        </div>
+      </div>
+      <button id="saveBtn" class="mt-4 w-full bg-green-600 active:bg-green-800 text-white font-semibold py-3 rounded-lg shadow">保存这笔账单</button>
+      <p id="saveTip" class="text-center text-green-600 text-sm mt-2 hidden">已保存 ✓</p>
+    </div>
+  </div>
+
+  <!-- 页面2：统计 -->
+  <div id="pageHistory" class="hidden">
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="text-xs text-gray-500">账单笔数</div>
+        <div id="statCount" class="num text-2xl font-bold text-gray-800 mt-1">0</div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="text-xs text-gray-500">累计下注</div>
+        <div id="statBet" class="num text-2xl font-bold text-gray-800 mt-1">0.00</div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="text-xs text-gray-500">累计返水</div>
+        <div id="statRebate" class="num text-2xl font-bold text-gray-800 mt-1">0.00</div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="text-xs text-gray-500">累计盈亏</div>
+        <div id="statPnL" class="num text-2xl font-bold mt-1 text-red-600">0.00</div>
+      </div>
+    </div>
+    <div id="historyList" class="space-y-3"></div>
+    <p id="emptyTip" class="text-center text-gray-400 text-sm py-8">还没有保存过账单</p>
+  </div>
+</div>
+
+<script>
+// 内置赔率规则（可在界面手动修改）
+const ODDS = { "特码": 47, "平码": 7, "二连": 50, "三中三": 600, "半波": 5, "六肖": 1.85 };
+const betList = document.getElementById('betList');
+
+function addBet() {
+  const row = document.createElement('div');
+  row.className = "bg-gray-50 rounded-lg p-2 space-y-2";
+  row.innerHTML = `
+    <div class="flex gap-2">
+      <select class="play flex-1 border rounded px-2 py-2">
+        ${Object.keys(ODDS).map(k => `<option value="${k}">${k}</option>`).join('')}
+      </select>
+      <label class="flex items-center gap-1 text-sm text-gray-600 px-2">
+        <input type="checkbox" class="win w-5 h-5 accent-green-600"> 中奖
+      </label>
+      <button class="del text-red-500 text-2xl leading-none px-2" title="删除">×</button>
+    </div>
+    <div class="flex gap-2">
+      <input type="number" class="amount flex-1 border rounded px-2 py-2 num" placeholder="金额" min="0" value="">
+      <input type="number" class="odds flex-1 border rounded px-2 py-2 num" placeholder="赔率" min="0" step="0.01">
+      <input type="number" class="shui flex-1 border rounded px-2 py-2 num" placeholder="水" min="0" step="0.001" value="0.06">
+    </div>
+  `;
+  betList.appendChild(row);
+  const playSel = row.querySelector('.play');
+  const oddsInp = row.querySelector('.odds');
+  oddsInp.value = ODDS[playSel.value];
+  playSel.addEventListener('change', () => { oddsInp.value = ODDS[playSel.value]; calc(); });
+  row.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
+  row.querySelector('.del').addEventListener('click', () => { row.remove(); calc(); });
+  calc();
+}
+
+function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+
+function calc() {
+  const declarer = document.getElementById('declarer').value || '张三';
+  let totalBet = 0, totalRebate = 0, totalPayout = 0;
+  const amounts = [], winGroups = {};
+
+  betList.querySelectorAll(':scope > div').forEach(row => {
+    const play = row.querySelector('.play').value;
+    const amount = parseFloat(row.querySelector('.amount').value) || 0;
+    const odds = parseFloat(row.querySelector('.odds').value) || 0;
+    const shui = parseFloat(row.querySelector('.shui').value) || 0;
+    const win = row.querySelector('.win').checked;
+
+    totalBet += amount;
+    if (amount > 0) amounts.push(amount);
+    totalRebate += amount * shui;
+    if (win) {
+      const payout = amount * odds;
+      totalPayout += payout;
+      if (!winGroups[play]) winGroups[play] = { amounts: [], payout: 0 };
+      winGroups[play].amounts.push(amount);
+      winGroups[play].payout += payout;
+    }
+  });
+
+  const pnl = (totalPayout + totalRebate) - totalBet;
+  document.getElementById('sumBet').textContent = fmt(totalBet);
+  document.getElementById('sumRebate').textContent = fmt(totalRebate);
+  document.getElementById('rDeclarer').textContent = declarer;
+  document.getElementById('rDetail').textContent = amounts.length ? amounts.join('+') + '=' + fmt(totalBet) : '0=0.00';
+  document.getElementById('rTotal').textContent = fmt(totalBet);
+  document.getElementById('rRebate').textContent = fmt(totalRebate);
+
+  let winText = '';
+  for (const play in winGroups) {
+    const g = winGroups[play];
+    winText += `${play}中：${g.amounts.join('+')}=${fmt(g.amounts.reduce((a,b)=>a+b,0))} —— 赔:${g.payout.toFixed(1)}\n`;
+  }
+  document.getElementById('rWins').textContent = winText ? '中奖情况：\n' + winText.trim() : '中奖情况：无';
+
+  const pnlEl = document.getElementById('rPnL');
+  if (pnl > 0) {
+    pnlEl.textContent = '+' + fmt(pnl);
+    pnlEl.className = 'num text-2xl font-bold text-green-600';
+  } else {
+    pnlEl.textContent = fmt(pnl);
+    pnlEl.className = 'num text-2xl font-bold text-red-600';
+  }
+  return { declarer, totalBet, totalRebate, totalPayout, pnl };
+}
+
+// ===== 账单保存与统计（数据只存在本机浏览器） =====
+const KEY = 'sz_bills';
+const loadBills = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+const saveBills = b => localStorage.setItem(KEY, JSON.stringify(b));
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const r = calc();
+  if (r.totalBet <= 0) { alert('请先填写注单金额'); return; }
+  const bills = loadBills();
+  bills.unshift({ time: new Date().toLocaleString('zh-CN'), ...r });
+  saveBills(bills);
+  const tip = document.getElementById('saveTip');
+  tip.classList.remove('hidden');
+  setTimeout(() => tip.classList.add('hidden'), 1500);
+  renderHistory();
+});
+
+function renderHistory() {
+  const bills = loadBills();
+  const list = document.getElementById('historyList');
+  document.getElementById('emptyTip').style.display = bills.length ? 'none' : 'block';
+  document.getElementById('statCount').textContent = bills.length;
+  const sb = bills.reduce((a,b)=>a+b.totalBet,0);
+  const sr = bills.reduce((a,b)=>a+b.totalRebate,0);
+  const sp = bills.reduce((a,b)=>a+b.pnl,0);
+  document.getElementById('statBet').textContent = fmt(sb);
+  document.getElementById('statRebate').textContent = fmt(sr);
+  const spEl = document.getElementById('statPnL');
+  spEl.textContent = (sp > 0 ? '+' : '') + fmt(sp);
+  spEl.className = 'num text-2xl font-bold mt-1 ' + (sp > 0 ? 'text-green-600' : 'text-red-600');
+
+  list.innerHTML = bills.map((b, i) => `
+    <div class="bg-white rounded-xl shadow p-4">
+      <div class="flex justify-between items-center">
+        <div>
+          <div class="font-semibold text-gray-800">${b.declarer}</div>
+          <div class="text-xs text-gray-400">${b.time}</div>
+        </div>
+        <div class="text-right">
+          <div class="num font-bold ${b.pnl > 0 ? 'text-green-600' : 'text-red-600'}">${b.pnl > 0 ? '+' : ''}${fmt(b.pnl)}</div>
+          <div class="text-xs text-gray-400">下注 ${fmt(b.totalBet)} · 返水 ${fmt(b.totalRebate)}</div>
+        </div>
+      </div>
+      <button data-i="${i}" class="delBill mt-2 text-xs text-red-400">删除此条</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('.delBill').forEach(btn => btn.addEventListener('click', e => {
+    const bills = loadBills();
+    bills.splice(+e.target.dataset.i, 1);
+    saveBills(bills);
+    renderHistory();
+  }));
+}
+
+// ===== 页签切换 =====
+const tC = document.getElementById('tabCalc'), tH = document.getElementById('tabHistory');
+function switchTab(calc_) {
+  document.getElementById('pageCalc').classList.toggle('hidden', !calc_);
+  document.getElementById('pageHistory').classList.toggle('hidden', calc_);
+  const on = 'flex-1 py-3 font-semibold text-blue-700 border-b-2 border-blue-700';
+  const off = 'flex-1 py-3 font-semibold text-gray-500 border-b-2 border-transparent';
+  tC.className = calc_ ? on : off;
+  tH.className = calc_ ? off : on;
+  if (!calc_) renderHistory();
+}
+tC.addEventListener('click', () => switchTab(true));
+tH.addEventListener('click', () => switchTab(false));
+
+document.getElementById('addBtn').addEventListener('click', addBet);
+document.getElementById('declarer').addEventListener('input', calc);
+addBet();
+renderHistory();
+</script>
+</body>
+</html>
